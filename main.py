@@ -1,22 +1,32 @@
+import os
+import threading
+from flask import Flask
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-import os
 
+# Крошечный HTTP-сервер для Render
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running", 200
+
+# Твой бот
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Привет! Я твой покерный тренер. Скоро я научу тебя не сливать деньги. ♠️"
-    )
+    await update.message.reply_text("Привет! Я твой покерный тренер. ♠️")
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Я пока умею только здороваться. Но скоро тут будет задача дня и разбор раздач!"
-    )
+# Запуск бота в отдельном потоке
+def run_bot():
+    bot_app = ApplicationBuilder().token(TOKEN).build()
+    bot_app.add_handler(CommandHandler("start", start))
+    print("Bot is starting...")
+    bot_app.run_polling()
 
 if __name__ == '__main__':
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    print("Бот запущен...")
-    app.run_polling()
+    # Запускаем бота в фоне
+    threading.Thread(target=run_bot, daemon=True).start()
+    # Запускаем веб-сервер, чтобы Render был доволен
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
