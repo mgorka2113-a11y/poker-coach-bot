@@ -1,4 +1,5 @@
 import os
+import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
@@ -22,9 +23,12 @@ bot_app.add_handler(CommandHandler("help", help_command))
 # --- Flask route, который принимает сообщения от Telegram ---
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
-    # Получаем данные от Telegram и передаём их в бота
     update = Update.de_json(request.get_json(force=True), bot_app.bot)
-    bot_app.update_queue.put(update)
+    # Передаём сообщение в очередь бота
+    asyncio.run_coroutine_threadsafe(
+        bot_app.update_queue.put(update),
+        bot_app.loop
+    )
     return "ok", 200
 
 @app.route('/')
@@ -32,18 +36,23 @@ def home():
     return "Bot is running", 200
 
 # --- Инициализация бота и установка вебхука ---
-if __name__ == '__main__':
-    # Инициализируем бота (без запуска polling)
-    bot_app.initialize()
+async def setup_bot():
+    await bot_app.initialize()
+    await bot_app.start()
     
-    # Устанавливаем вебхук. URL берём из переменной окружения RENDER_EXTERNAL_URL
-    # Render сам подставляет этот URL для твоего сервиса.
     external_url = os.environ.get("RENDER_EXTERNAL_URL")
     if external_url:
         webhook_url = f"{external_url}/{TOKEN}"
-        bot_app.bot.set_webhook(url=webhook_url)
+        await bot_app.bot.set_webhook(url=webhook_url)
         print(f"Webhook set to {webhook_url}")
+
+if __name__ == '__main__':
+    # Запускаем инициализацию бота в фоне
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    bot_app.loop = loop
+    loop.run_until_complete(setup_bot())
     
-    # Запускаем Flask
+    # Запускаем Flask в главном потоке
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
